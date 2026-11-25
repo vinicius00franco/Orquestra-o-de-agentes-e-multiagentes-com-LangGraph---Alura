@@ -1,7 +1,7 @@
 """Aula 01 - Agente ReAct com Gemini.
 
-Script Python convertido a partir de `Aula_01_ReAct.ipynb`, com tipagem estrita
-para validação com `mypy` e lint/formatação com `ruff`.
+Script Python convertido a partir de `Aula_01_ReAct.ipynb`, seguindo os
+princípios KISS, YAGNI, DRY, Clean Code, Early Return e tipagem estrita.
 """
 
 from __future__ import annotations
@@ -9,13 +9,14 @@ from __future__ import annotations
 import argparse
 import os
 import re
-from typing import Any, TypedDict
+from typing import Any
 
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-MODEL_NAME = "gemini-2.5-flash"
+NOME_MODELO = "gemini-2.5-flash"
 
+# Catálogo simulado de quantidades disponíveis no inventário.
 ESTOQUE_INVENTARIO: dict[str, int] = {
     "monitor": 75,
     "teclado": 120,
@@ -25,6 +26,7 @@ ESTOQUE_INVENTARIO: dict[str, int] = {
     "impressora": 15,
 }
 
+# Catálogo simulado de preços unitários em reais (R$).
 PRECOS_INVENTARIO: dict[str, float] = {
     "monitor": 999.90,
     "teclado": 150.00,
@@ -34,6 +36,7 @@ PRECOS_INVENTARIO: dict[str, float] = {
     "impressora": 750.00,
 }
 
+# Prompt de sistema que instrui o modelo a operar no ciclo ReAct.
 PROMPT_REACT = """
 Você funciona em um ciclo de Pensamento, Ação, Pausa e Observação.
 Ao final do ciclo, você fornece uma Resposta.
@@ -75,60 +78,54 @@ Resposta: O valor total do teclado e do mouse gamer é R$ 249.50.
 """.strip()
 
 
-class EstadoAgente(TypedDict):
-    """Representa o estado do agente ReAct."""
-
-    pergunta: str
-    historico: list[str]
-    acao_pendente: str
-    resposta_final: str
-
-
 def configurar_ambiente() -> None:
-    """Carrega variáveis de ambiente e configura o cliente do Gemini."""
+    """Carrega variáveis de ambiente e inicializa o cliente do Gemini."""
     load_dotenv()
 
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if not api_key:
+    # Aceita tanto GEMINI_API_KEY quanto GOOGLE_API_KEY para compatibilidade.
+    chave_api = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not chave_api:
         raise ValueError(
             "Chave de API não encontrada. Defina GEMINI_API_KEY ou GOOGLE_API_KEY no arquivo .env."
         )
 
-    os.environ["GOOGLE_API_KEY"] = api_key
+    os.environ["GOOGLE_API_KEY"] = chave_api
 
-    tavily_key = os.getenv("TAVILY_API_KEY")
-    if tavily_key:
-        os.environ["TAVILY_API_KEY"] = tavily_key
+    chave_tavily = os.getenv("TAVILY_API_KEY")
+    if chave_tavily:
+        os.environ["TAVILY_API_KEY"] = chave_tavily
 
-    genai.configure(api_key=api_key)
+    genai.configure(api_key=chave_api)
 
 
 def consultar_estoque(item: str) -> str:
-    """Simula a consulta de estoque de um item no inventário."""
+    """Retorna a quantidade disponível de um item no inventário."""
     item_normalizado = item.lower().strip()
-    if item_normalizado in ESTOQUE_INVENTARIO:
-        quantidade = ESTOQUE_INVENTARIO[item_normalizado]
-        return f"Temos {quantidade} {item_normalizado}s em estoque."
-    return f"Item '{item_normalizado}' não encontrado no inventário."
+    if item_normalizado not in ESTOQUE_INVENTARIO:
+        return f"Item '{item_normalizado}' não encontrado no inventário."
+
+    quantidade = ESTOQUE_INVENTARIO[item_normalizado]
+    return f"Temos {quantidade} {item_normalizado}s em estoque."
 
 
 def consultar_preco_produto(produto: str) -> str:
-    """Simula a consulta do preço unitário de um produto."""
+    """Retorna o preço unitário de um produto cadastrado."""
     produto_normalizado = produto.lower().strip()
-    if produto_normalizado in PRECOS_INVENTARIO:
-        preco = PRECOS_INVENTARIO[produto_normalizado]
-        return f"O preço de um(a) {produto_normalizado} é R$ {preco:.2f}."
-    return f"Produto '{produto_normalizado}' não encontrado na lista de preços."
+    if produto_normalizado not in PRECOS_INVENTARIO:
+        return f"Produto '{produto_normalizado}' não encontrado na lista de preços."
+
+    preco = PRECOS_INVENTARIO[produto_normalizado]
+    return f"O preço de um(a) {produto_normalizado} é R$ {preco:.2f}."
 
 
-def ferramenta_encontrar_produto_mais_caro() -> str:
+def buscar_produto_mais_caro() -> str:
     """Retorna o nome e o preço do produto mais caro no inventário."""
     if not PRECOS_INVENTARIO:
         return "Nenhum produto encontrado na lista de preços para comparação."
 
     nome_produto_mais_caro, valor_produto_mais_caro = max(
         PRECOS_INVENTARIO.items(),
-        key=lambda item: item[1],
+        key=lambda par_produto: par_produto[1],
     )
     return (
         f"O produto mais caro é o(a) {nome_produto_mais_caro} "
@@ -136,7 +133,7 @@ def ferramenta_encontrar_produto_mais_caro() -> str:
     )
 
 
-def ferramenta_calcular_valor_total_lista(lista_itens: str) -> str:
+def calcular_valor_total_lista(lista_itens: str) -> str:
     """Calcula o valor total de uma lista de itens separados por vírgula."""
     itens_processados = [item.strip().lower() for item in lista_itens.split(",") if item.strip()]
 
@@ -144,99 +141,107 @@ def ferramenta_calcular_valor_total_lista(lista_itens: str) -> str:
     itens_nao_encontrados: list[str] = []
 
     for item in itens_processados:
-        if item in PRECOS_INVENTARIO:
-            valor_total += PRECOS_INVENTARIO[item]
-        else:
+        if item not in PRECOS_INVENTARIO:
             itens_nao_encontrados.append(item)
+            continue
+
+        valor_total += PRECOS_INVENTARIO[item]
 
     resposta = f"O valor total dos itens encontrados é R$ {valor_total:.2f}."
-    if itens_nao_encontrados:
-        resposta += (
-            " Os seguintes itens não foram encontrados e não foram incluídos no cálculo: "
-            f"{', '.join(itens_nao_encontrados)}."
-        )
-    return resposta
+    if not itens_nao_encontrados:
+        return resposta
 
-
-def executar_acao(action_name: str, action_arg: str) -> str:
-    """Despacha a execução de uma ferramenta suportada pelo agente ReAct."""
-    if action_name == "consultar_estoque":
-        return consultar_estoque(action_arg)
-    if action_name == "consultar_preco_produto":
-        return consultar_preco_produto(action_arg)
-    if action_name == "encontrar_produto_mais_caro":
-        return ferramenta_encontrar_produto_mais_caro()
-    if action_name == "calcular_valor_total_lista":
-        return ferramenta_calcular_valor_total_lista(action_arg)
+    itens_faltantes = ", ".join(itens_nao_encontrados)
     return (
-        f"Erro: Ação '{action_name}' desconhecida. "
+        f"{resposta} Os seguintes itens não foram encontrados e não foram incluídos "
+        f"no cálculo: {itens_faltantes}."
+    )
+
+
+def executar_acao(nome_acao: str, argumento_acao: str) -> str:
+    """Despacha a execução de uma ferramenta suportada pelo agente ReAct."""
+    if nome_acao == "consultar_estoque":
+        return consultar_estoque(argumento_acao)
+    if nome_acao == "consultar_preco_produto":
+        return consultar_preco_produto(argumento_acao)
+    if nome_acao == "encontrar_produto_mais_caro":
+        return buscar_produto_mais_caro()
+    if nome_acao == "calcular_valor_total_lista":
+        return calcular_valor_total_lista(argumento_acao)
+
+    return (
+        f"Erro: Ação '{nome_acao}' desconhecida. "
         "Verifique o prompt ou a implementação da ferramenta."
     )
 
 
-def run_react_agent_with_history(
+def executar_agente_react_com_historico(
     pergunta: str,
-    max_iterations: int = 5,
-    model_name: str = MODEL_NAME,
+    limite_iteracoes: int = 5,
+    nome_modelo: str = NOME_MODELO,
 ) -> tuple[str, list[Any]]:
     """Executa o ciclo ReAct para uma pergunta e retorna a resposta final e o histórico."""
-    model = genai.GenerativeModel(model_name)
-    chat = model.start_chat(history=[])
-    chat.send_message(PROMPT_REACT)
+    modelo = genai.GenerativeModel(nome_modelo)
+    conversa = modelo.start_chat(history=[])
 
-    current_prompt = pergunta
+    # Envia as instruções do ciclo ReAct antes da primeira pergunta do usuário.
+    conversa.send_message(PROMPT_REACT)
+    prompt_atual = pergunta
 
-    for i in range(max_iterations):
-        response = chat.send_message(current_prompt)
-        response_text = str(response.text).strip()
+    for iteracao in range(1, limite_iteracoes + 1):
+        resposta_modelo = conversa.send_message(prompt_atual)
+        texto_resposta = str(resposta_modelo.text).strip()
 
-        print(f"\n--- Iteração {i + 1} ---")
-        print(f"Modelo pensou/respondeu:\n{response_text}\n")
+        print(f"\n--- Iteração {iteracao} ---")
+        print(f"Modelo pensou/respondeu:\n{texto_resposta}\n")
 
-        response_match_final = re.search(r"Resposta:\s*(.*)", response_text, re.DOTALL)
-        if response_match_final:
-            return response_match_final.group(1).strip(), list(chat.history)
+        # Verifica primeiro se o modelo já produziu a resposta final.
+        correspondencia_final = re.search(r"Resposta:\s*(.*)", texto_resposta, re.DOTALL)
+        if correspondencia_final:
+            return correspondencia_final.group(1).strip(), list(conversa.history)
 
-        match = re.search(r"Ação:\s*(\w+)(?::\s*([^\n]*))?", response_text)
-        if match:
-            action_name = match.group(1).strip()
-            action_arg = match.group(2).strip() if match.group(2) is not None else ""
-
-            observacao_da_acao = executar_acao(action_name, action_arg)
-            current_prompt = f"Observação: {observacao_da_acao}"
-
-            print(f"Executou ação: {action_name} com argumento '{action_arg}'")
-            print(f"Observação: {observacao_da_acao}\n")
-        else:
+        # Caso contrário, tenta extrair o nome da ferramenta e o argumento opcional.
+        correspondencia_acao = re.search(r"Ação:\s*(\w+)(?::\s*([^\n]*))?", texto_resposta)
+        if not correspondencia_acao:
             return (
                 f"Erro: O agente não conseguiu extrair uma Ação ou Resposta final "
-                f"após {i + 1} iterações. Última resposta do modelo: {response_text}",
-                list(chat.history),
+                f"após {iteracao} iterações. Última resposta do modelo: {texto_resposta}",
+                list(conversa.history),
             )
+
+        nome_acao = correspondencia_acao.group(1).strip()
+        argumento_bruto = correspondencia_acao.group(2)
+        argumento_acao = argumento_bruto.strip() if argumento_bruto is not None else ""
+
+        observacao_acao = executar_acao(nome_acao, argumento_acao)
+        prompt_atual = f"Observação: {observacao_acao}"
+
+        print(f"Executou ação: {nome_acao} com argumento '{argumento_acao}'")
+        print(f"Observação: {observacao_acao}\n")
 
     return (
         "Erro: Limite máximo de iterações atingido sem uma resposta final do agente.",
-        list(chat.history),
+        list(conversa.history),
     )
 
 
-def run_react_agent(
+def executar_agente_react(
     pergunta: str,
-    max_iterations: int = 5,
-    model_name: str = MODEL_NAME,
+    limite_iteracoes: int = 5,
+    nome_modelo: str = NOME_MODELO,
 ) -> str:
-    """Executa o ciclo ReAct para uma dada pergunta usando o modelo Gemini."""
-    resposta, _ = run_react_agent_with_history(
+    """Executa o ciclo ReAct para uma pergunta e retorna apenas a resposta final."""
+    resposta_final, _ = executar_agente_react_com_historico(
         pergunta=pergunta,
-        max_iterations=max_iterations,
-        model_name=model_name,
+        limite_iteracoes=limite_iteracoes,
+        nome_modelo=nome_modelo,
     )
-    return resposta
+    return resposta_final
 
 
 def executar_exemplos() -> None:
     """Executa o conjunto de perguntas de demonstração da Aula 01."""
-    perguntas = [
+    perguntas_exemplo = [
         "Quantos teclados temos em estoque?",
         "Qual o preço de um headset?",
         "Temos cadeiras em estoque?",
@@ -245,12 +250,14 @@ def executar_exemplos() -> None:
     ]
 
     print("--- Começando as Interações com o Agente ReAct ---")
-    for indice, pergunta in enumerate(perguntas, start=1):
+    for indice, pergunta in enumerate(perguntas_exemplo, start=1):
         print(f"\n**Interação {indice}: {pergunta}**")
-        resposta = run_react_agent(pergunta)
+        resposta = executar_agente_react(pergunta)
         print(f"\n**RESPOSTA FINAL DO AGENTE {indice}:** {resposta}\n")
-        if indice < len(perguntas):
+
+        if indice < len(perguntas_exemplo):
             print("\n" + "=" * 80 + "\n")
+
     print("\n--- Fim das Interações ---")
 
 
@@ -269,34 +276,35 @@ def iniciar_conversacao_com_agente() -> None:
 
         print("\nAgente: Processando...")
         try:
-            resposta_agente = run_react_agent(pergunta_usuario)
+            resposta_agente = executar_agente_react(pergunta_usuario)
             print(f"\nAgente: {resposta_agente}")
-        except Exception as exc:
-            print(f"\nAgente: Ocorreu um erro ao processar sua pergunta: {exc}")
+        except Exception as erro:
+            print(f"\nAgente: Ocorreu um erro ao processar sua pergunta: {erro}")
             print("Por favor, tente novamente ou digite 'sair'.")
 
 
-def parse_args() -> argparse.Namespace:
-    """Analisa argumentos de linha de comando."""
-    parser = argparse.ArgumentParser(description="Agente ReAct de inventário (Aula 01).")
-    parser.add_argument(
+def ler_argumentos_cli() -> argparse.Namespace:
+    """Analisa os argumentos recebidos via linha de comando."""
+    analisador = argparse.ArgumentParser(description="Agente ReAct de inventário (Aula 01).")
+    analisador.add_argument(
         "--exemplos",
         action="store_true",
         help="Executa as perguntas de exemplo da aula em vez do modo interativo.",
     )
-    return parser.parse_args()
+    return analisador.parse_args()
 
 
-def main() -> None:
+def principal() -> None:
     """Ponto de entrada principal do script."""
-    args = parse_args()
+    argumentos = ler_argumentos_cli()
     configurar_ambiente()
 
-    if args.exemplos:
+    if argumentos.exemplos:
         executar_exemplos()
-    else:
-        iniciar_conversacao_com_agente()
+        return
+
+    iniciar_conversacao_com_agente()
 
 
 if __name__ == "__main__":
-    main()
+    principal()
