@@ -1,0 +1,2 @@
+# Adicione novas dependências aqui (uma por linha).
+# Ao salvar este arquivo ou o pyproject.toml, o launchd atualiza a .venv automaticamente.
